@@ -1,0 +1,435 @@
+{
+  "entities": {
+    "Hospital": {
+      "title": "Hospital",
+      "description": "Public OPD directory listing, live queue state, doctors, and sponsorship settings for a hospital or clinic.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 160 },
+        "type": { "type": "string", "enum": ["Hospital", "Clinic", "Eye Centre", "Diagnostic Centre", "Polyclinic"] },
+        "registrationNumber": { "type": "string", "minLength": 3, "maxLength": 64 },
+        "yearEstablished": { "type": "number" },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "state": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "pincode": { "type": "string", "pattern": "^[0-9]{6}$", "maxLength": 6 },
+        "address": { "type": "string", "minLength": 5, "maxLength": 300 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "deskPhone": { "type": "string", "minLength": 6, "maxLength": 24 },
+        "specialties": { "type": "array", "description": "Bounded up to 12 specialties" },
+        "opdDays": { "type": "string", "maxLength": 80 },
+        "opdTimings": { "type": "string", "maxLength": 80 },
+        "openNow": { "type": "boolean" },
+        "consultationFee": { "type": "number" },
+        "avgConsultMinutes": { "type": "number" },
+        "activeCounters": { "type": "number" },
+        "patientsWaiting": { "type": "number" },
+        "isPaused": { "type": "boolean" },
+        "pausedOpds": { "type": "object", "description": "Per-OPD pause flags keyed by Specialty" },
+        "currentTokenNumber": { "type": "number" },
+        "isLiveQueue": { "type": "boolean" },
+        "historicalWaitMinutes": { "type": "number" },
+        "googleRating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "photoUrl": { "type": "string", "maxLength": 400 },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "is_sponsored": { "type": "boolean" },
+        "sponsor_rank": { "type": "number" },
+        "sponsor_start_date": { "type": "string", "maxLength": 32 },
+        "sponsor_end_date": { "type": "string", "maxLength": 32 },
+        "sponsor_slots": { "type": "object", "description": "Per-OPD specialty sponsor rank (1 or 2) and active date window" },
+        "ownerUid": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "name", "type", "city", "address", "lat", "lng",
+        "specialties", "consultationFee", "avgConsultMinutes",
+        "activeCounters", "patientsWaiting", "isPaused", "isLiveQueue",
+        "status", "is_sponsored", "ownerUid", "createdAt", "updatedAt"
+      ]
+    },
+    "HospitalPrivateContact": {
+      "title": "HospitalPrivateContact",
+      "description": "Isolated PII for hospital registration contact person and verification documents.",
+      "type": "object",
+      "properties": {
+        "hospitalId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contactName": { "type": "string", "maxLength": 120 },
+        "designation": { "type": "string", "maxLength": 80 },
+        "mobile": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "maxLength": 160 },
+        "alternatePhone": { "type": "string", "maxLength": 20 },
+        "licenseDocName": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["hospitalId", "ownerUid", "contactName", "mobile", "email", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Patient OPD appointment or live walk-in queue token.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalOwnerUid": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalName": { "type": "string", "maxLength": 160 },
+        "doctorId": { "type": "string", "maxLength": 128 },
+        "doctorName": { "type": "string", "maxLength": 120 },
+        "specialty": { "type": "string", "maxLength": 64 },
+        "patientUid": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientPid": { "type": "string", "maxLength": 24, "pattern": "^PID-[0-9]{4}-[0-9]{4}-[0-9]{2}$" },
+        "patientName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "patientMobile": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "patientEmail": { "type": "string", "maxLength": 160 },
+        "patientAge": { "type": "number" },
+        "patientGender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "reason": { "type": "string", "maxLength": 300 },
+        "date": { "type": "string", "maxLength": 24 },
+        "timeSlot": { "type": "string", "maxLength": 40 },
+        "isWalkIn": { "type": "boolean" },
+        "tokenNumber": { "type": "string", "maxLength": 24 },
+        "queuePosition": { "type": "number" },
+        "status": { "type": "string", "enum": ["waiting", "called", "completed", "skipped", "cancelled"] },
+        "consentGiven": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "id", "hospitalId", "hospitalOwnerUid", "hospitalName", "specialty", "patientUid",
+        "patientName", "patientMobile", "patientAge", "patientGender",
+        "date", "timeSlot", "isWalkIn", "tokenNumber", "queuePosition",
+        "status", "consentGiven", "createdAt", "updatedAt"
+      ]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII and medical profile (blood group, allergies, emergency contacts) for authenticated patients.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "pid": { "type": "string", "maxLength": 24, "pattern": "^PID-[0-9]{4}-[0-9]{4}-[0-9]{2}$" },
+        "historyConsent": { "type": "boolean" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 160 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "age": { "type": "number" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "bloodGroup": {
+          "type": "string",
+          "enum": ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Unknown"]
+        },
+        "allergies": { "type": "array", "description": "Bounded up to 15 allergy tags" },
+        "allergyNotes": { "type": "string", "maxLength": 300 },
+        "chronicConditions": { "type": "string", "maxLength": 300 },
+        "emergencyContacts": { "type": "array", "description": "Bounded up to 3 emergency contact objects" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "updatedAt"]
+    },
+    "AdminMarker": {
+      "title": "AdminMarker",
+      "description": "Server/Admin-only marker collection for Pinnacle administrators.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "grantedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "grantedAt"]
+    },
+    "SponsoredSlot": {
+      "title": "SponsoredSlot",
+      "description": "Public non-PII availability lock for a city + specialty + rank (1 or 2) sponsored placement.",
+      "type": "object",
+      "properties": {
+        "slotKey": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "specialty": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "rank": { "type": "number" },
+        "status": { "type": "string", "enum": ["available", "occupied"] },
+        "occupiedUntilMs": { "type": "number" },
+        "occupiedUntilIso": { "type": "string", "maxLength": 40 },
+        "hospitalId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["slotKey", "city", "specialty", "rank", "status", "ownerUid", "updatedAt"]
+    },
+    "SponsorWaitlistEntry": {
+      "title": "SponsorWaitlistEntry",
+      "description": "Waitlist queue entry when a hospital waits for Rank 1 or Rank 2 to open.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "city": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "specialty": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "desiredRank": { "type": "number" },
+        "status": { "type": "string", "enum": ["waiting", "notified", "claimed", "expired"] },
+        "notifiedAt": { "type": "number" },
+        "claimExpiresAt": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "hospitalId", "ownerUid", "city", "specialty", "desiredRank", "status", "createdAt", "updatedAt"]
+    },
+    "PaymentRecord": {
+      "title": "PaymentRecord",
+      "description": "Audit trail of verified sponsorship checkout attempts (Razorpay or Mock).",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "paymentId": { "type": "string", "maxLength": 128 },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalName": { "type": "string", "maxLength": 160 },
+        "ownerUid": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "city": { "type": "string", "maxLength": 80 },
+        "specialty": { "type": "string", "maxLength": 64 },
+        "rank": { "type": "number" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["INR"] },
+        "mode": { "type": "string", "enum": ["razorpay", "mock"] },
+        "status": { "type": "string", "enum": ["paid", "failed", "conflict_not_charged"] },
+        "failureReason": { "type": "string", "maxLength": 200 },
+        "startIso": { "type": "string", "maxLength": 40 },
+        "endIso": { "type": "string", "maxLength": 40 },
+        "timestamp": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "paymentId", "hospitalId", "ownerUid", "city", "specialty", "rank", "amount", "currency", "mode", "status", "timestamp", "createdAt"]
+    },
+    "HospitalStaff": {
+      "title": "HospitalStaff",
+      "description": "Hospital-provisioned Doctor or Medical (pharmacy) staff accounts linked to one hospital.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "role": { "type": "string", "enum": ["doctor", "medical"] },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalOwnerUid": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalName": { "type": "string", "maxLength": 160 },
+        "staffUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "email": { "type": "string", "minLength": 5, "maxLength": 160 },
+        "specialty": { "type": "string", "maxLength": 64 },
+        "qualification": { "type": "string", "maxLength": 120 },
+        "registrationNumber": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "role", "hospitalId", "hospitalOwnerUid", "name", "email", "createdAt"]
+    },
+    "HealthVisit": {
+      "title": "HealthVisit",
+      "description": "Patient consultation, diagnosis, and prescription record across hospitals and cities.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "bookingId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "tokenNumber": { "type": "string", "maxLength": 24 },
+        "patientUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientPid": { "type": "string", "maxLength": 24 },
+        "patientName": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "patientAge": { "type": "number" },
+        "patientGender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalName": { "type": "string", "maxLength": 160 },
+        "hospitalAddress": { "type": "string", "maxLength": 300 },
+        "city": { "type": "string", "maxLength": 80 },
+        "doctorId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "doctorUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "doctorName": { "type": "string", "maxLength": 120 },
+        "doctorQualification": { "type": "string", "maxLength": 120 },
+        "doctorRegNumber": { "type": "string", "maxLength": 64 },
+        "doctorSpecialty": { "type": "string", "maxLength": 64 },
+        "visitDate": { "type": "string", "maxLength": 24 },
+        "visitTime": { "type": "string", "maxLength": 24 },
+        "symptoms": { "type": "string", "maxLength": 500 },
+        "diagnosis": { "type": "string", "maxLength": 300 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "followUpDate": { "type": "string", "maxLength": 24 },
+        "medicines": { "type": "array", "description": "Bounded up to 25 prescribed medicine rows" },
+        "consultationStatus": { "type": "string", "enum": ["in_progress", "finished"] },
+        "medicalStatus": { "type": "string", "enum": ["New", "In progress", "Completed"] },
+        "dispensingSummary": { "type": "string", "maxLength": 120 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "patientName", "hospitalId", "doctorId", "doctorName", "visitDate", "diagnosis", "consultationStatus", "medicalStatus", "createdAt", "updatedAt"]
+    },
+    "MedicalPrescription": {
+      "title": "MedicalPrescription",
+      "description": "Legacy prescription summary routed to a hospital's Medical (pharmacy) desk.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "visitId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientPid": { "type": "string", "maxLength": 24 },
+        "patientName": { "type": "string", "maxLength": 120 },
+        "doctorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "doctorName": { "type": "string", "maxLength": 120 },
+        "status": { "type": "string", "enum": ["New", "In progress", "Completed"] },
+        "medicines": { "type": "array", "description": "Bounded up to 25 medicine rows" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "visitId", "hospitalId", "patientName", "doctorName", "status", "createdAt", "updatedAt"]
+    },
+    "QueueEntry": {
+      "title": "QueueEntry",
+      "description": "OPD-scoped live queue item controlled exclusively by Hospital Desk and readable by matching doctors.",
+      "type": "object",
+      "properties": {
+        "queue_id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospital_id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "opd_id": { "type": "string", "minLength": 2, "maxLength": 64 },
+        "doctor_id": { "type": "string", "maxLength": 128 },
+        "patient_id": { "type": "string", "maxLength": 128 },
+        "patient_name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "age": { "type": "number" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "phone": { "type": "string", "maxLength": 20 },
+        "PID": { "type": "string", "maxLength": 24 },
+        "tokenNumber": { "type": "string", "maxLength": 24 },
+        "status": { "type": "string", "enum": ["waiting", "called", "completed", "skipped", "cancelled"] },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["queue_id", "hospital_id", "opd_id", "patient_name", "tokenNumber", "status", "created_at", "updatedAt"]
+    },
+    "Prescription": {
+      "title": "Prescription",
+      "description": "Shared Doctor-to-Medical prescription document keyed by hospital_id.",
+      "type": "object",
+      "properties": {
+        "prescription_id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patient_id": { "type": "string", "maxLength": 128 },
+        "patient_name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "PID": { "type": "string", "maxLength": 24 },
+        "doctor_id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "doctor_name": { "type": "string", "minLength": 2, "maxLength": 120 },
+        "hospital_id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "opd_id": { "type": "string", "maxLength": 64 },
+        "medicines": { "type": "array", "description": "Array of { id, name, strength, when, how_much, duration, total_qty }" },
+        "diagnosis": { "type": "string", "maxLength": 300 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string", "enum": ["New", "In progress", "Completed"] },
+        "dispensing_summary": { "type": "string", "maxLength": 120 },
+        "dispensing_details": { "type": "array", "description": "Per-medicine pharmacy dispensing status" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["prescription_id", "patient_name", "doctor_id", "doctor_name", "hospital_id", "medicines", "diagnosis", "status", "created_at", "updated_at"]
+    },
+    "DispensingRecord": {
+      "title": "DispensingRecord",
+      "description": "Individual medicine dispensing events logged by hospital Medical staff.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "prescriptionId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "visitId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientName": { "type": "string", "maxLength": 120 },
+        "patientPid": { "type": "string", "maxLength": 24 },
+        "medicineName": { "type": "string", "maxLength": 160 },
+        "strength": { "type": "string", "maxLength": 64 },
+        "quantityDispensed": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["Dispensed", "Out of stock", "Substituted"] },
+        "note": { "type": "string", "maxLength": 200 },
+        "staffId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "staffName": { "type": "string", "maxLength": 120 },
+        "date": { "type": "string", "maxLength": 24 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "prescriptionId", "hospitalId", "patientName", "medicineName", "status", "staffId", "staffName", "date", "createdAt"]
+    },
+    "RecordAuditLog": {
+      "title": "RecordAuditLog",
+      "description": "Immutable audit log recording each time a doctor views a patient's medical history.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientUid": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "patientPid": { "type": "string", "maxLength": 24 },
+        "viewerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "viewerUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "viewerName": { "type": "string", "maxLength": 120 },
+        "viewerRole": { "type": "string", "enum": ["doctor", "medical", "patient"] },
+        "hospitalId": { "type": "string", "minLength": 2, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "hospitalName": { "type": "string", "maxLength": 160 },
+        "bookingId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "action": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "patientUid", "patientPid", "viewerId", "viewerName", "viewerRole", "hospitalId", "hospitalName", "action", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/hospitals/{hospitalId}": {
+      "schema": { "$ref": "#/entities/Hospital" },
+      "description": "Registered hospitals and live OPD queue states."
+    },
+    "/hospitals/{hospitalId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/HospitalPrivateContact" },
+      "description": "Isolated PII for hospital registration contact person."
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "#/entities/Booking" },
+      "description": "Patient appointments and live walk-in queue tokens."
+    },
+    "/queue_entries/{queueId}": {
+      "schema": { "$ref": "#/entities/QueueEntry" },
+      "description": "OPD-scoped queue entries controlled by Hospital Desk."
+    },
+    "/prescriptions/{prescriptionId}": {
+      "schema": { "$ref": "#/entities/Prescription" },
+      "description": "Shared Doctor-to-Medical prescriptions scoped by hospital_id."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated user PII accessible only to the user or an admin."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminMarker" },
+      "description": "Admin role marker documents."
+    },
+    "/sponsored_slots/{slotKey}": {
+      "schema": { "$ref": "#/entities/SponsoredSlot" },
+      "description": "Public slot availability state for Rank 1 and Rank 2 without hospital names."
+    },
+    "/sponsor_waitlist/{waitlistId}": {
+      "schema": { "$ref": "#/entities/SponsorWaitlistEntry" },
+      "description": "Hospital waitlist entries for occupied sponsored slots."
+    },
+    "/payments/{orderId}": {
+      "schema": { "$ref": "#/entities/PaymentRecord" },
+      "description": "Owner-restricted sponsorship payment records."
+    },
+    "/hospital_staff/{staffId}": {
+      "schema": { "$ref": "#/entities/HospitalStaff" },
+      "description": "Doctor and Medical accounts created only by approved hospital owners or admins."
+    },
+    "/health_visits/{visitId}": {
+      "schema": { "$ref": "#/entities/HealthVisit" },
+      "description": "Patient visits and prescriptions readable by owner patient or consented active-queue doctor."
+    },
+    "/medical_prescriptions/{prescriptionId}": {
+      "schema": { "$ref": "#/entities/MedicalPrescription" },
+      "description": "Legacy incoming prescriptions scoped to a single hospital's Medical desk."
+    },
+    "/dispensing_records/{recordId}": {
+      "schema": { "$ref": "#/entities/DispensingRecord" },
+      "description": "Pharmacy dispensing history scoped to hospital Medical staff."
+    },
+    "/record_audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/RecordAuditLog" },
+      "description": "Append-only audit trail readable only by the patient."
+    }
+  }
+}
+

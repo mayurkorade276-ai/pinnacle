@@ -1,0 +1,1033 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isValidId(id) {
+      return id is string && id.size() >= 2 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && (
+        request.auth.token.email_verified == true ||
+        request.auth.token.phone_number != null
+      );
+    }
+
+    function isVerifiedAdminEmail() {
+      return isSignedIn() &&
+        request.auth.token.email == 'mayurkorade276@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isVerifiedOwnerEmail() {
+      return isSignedIn() &&
+        request.auth.token.email == 'swapnilkorade0203@gmail.com' &&
+        request.auth.token.email_verified == true;
+    }
+
+    function isOwner() {
+      return isVerifiedOwnerEmail();
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        isVerifiedAdminEmail() ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isStaffRoleForHospital(roleName, hospId) {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/hospital_staff/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/hospital_staff/$(request.auth.uid)).data.role == roleName &&
+        get(/databases/$(database)/documents/hospital_staff/$(request.auth.uid)).data.hospitalId == hospId;
+    }
+
+    function isVerifiedDoctorStaff() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/hospital_staff/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/hospital_staff/$(request.auth.uid)).data.role == 'doctor';
+    }
+
+    function patientHasConsent(patientUid) {
+      return isValidId(patientUid) &&
+        exists(/databases/$(database)/documents/users/$(patientUid)/private/profile) &&
+        get(/databases/$(database)/documents/users/$(patientUid)/private/profile).data.historyConsent == true;
+    }
+
+    function isValidHospital(data) {
+      return data.keys().hasAll([
+          'id', 'name', 'type', 'city', 'address', 'lat', 'lng',
+          'specialties', 'consultationFee', 'avgConsultMinutes',
+          'activeCounters', 'patientsWaiting', 'isPaused', 'isLiveQueue',
+          'status', 'is_sponsored', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'name', 'type', 'registrationNumber', 'yearEstablished',
+          'city', 'state', 'pincode', 'address', 'lat', 'lng', 'deskPhone',
+          'specialties', 'opdDays', 'opdTimings', 'openNow',
+          'consultationFee', 'avgConsultMinutes', 'activeCounters',
+          'patientsWaiting', 'currentTokenNumber', 'isPaused', 'pausedOpds', 'isLiveQueue', 'historicalWaitMinutes',
+          'googleRating', 'reviewCount', 'photoUrl', 'status',
+          'is_sponsored', 'sponsor_rank', 'sponsor_start_date', 'sponsor_end_date',
+          'sponsor_slots', 'ownerUid', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.ownerUid)
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 160
+        && data.type in ['Hospital', 'Clinic', 'Eye Centre', 'Diagnostic Centre', 'Polyclinic']
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && data.address is string && data.address.size() >= 5 && data.address.size() <= 300
+        && data.lat is number && data.lat >= -90 && data.lat <= 90
+        && data.lng is number && data.lng >= -180 && data.lng <= 180
+        && data.specialties is list && data.specialties.size() >= 1 && data.specialties.size() <= 12
+        && data.specialties[0] is string && data.specialties[0].size() <= 64
+        && data.consultationFee is number && data.consultationFee >= 0 && data.consultationFee <= 50000
+        && data.avgConsultMinutes is number && data.avgConsultMinutes >= 2 && data.avgConsultMinutes <= 120
+        && data.activeCounters is number && data.activeCounters >= 0 && data.activeCounters <= 100
+        && data.patientsWaiting is number && data.patientsWaiting >= 0 && data.patientsWaiting <= 1000
+        && data.isPaused is bool
+        && data.isLiveQueue is bool
+        && data.status in ['pending', 'approved', 'rejected']
+        && data.is_sponsored is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('currentTokenNumber' in data) || (data.currentTokenNumber is number && data.currentTokenNumber >= 0))
+        && (!('pausedOpds' in data) || (data.pausedOpds is map && data.pausedOpds.size() <= 12))
+        && (!('registrationNumber' in data) || (data.registrationNumber is string && data.registrationNumber.size() <= 64))
+        && (!('yearEstablished' in data) || (data.yearEstablished is number && data.yearEstablished >= 1850 && data.yearEstablished <= 2030))
+        && (!('state' in data) || (data.state is string && data.state.size() <= 80))
+        && (!('pincode' in data) || (data.pincode is string && data.pincode.size() == 6 && data.pincode.matches('^[0-9]{6}$')))
+        && (!('deskPhone' in data) || (data.deskPhone is string && data.deskPhone.size() <= 24))
+        && (!('opdDays' in data) || (data.opdDays is string && data.opdDays.size() <= 80))
+        && (!('opdTimings' in data) || (data.opdTimings is string && data.opdTimings.size() <= 80))
+        && (!('openNow' in data) || data.openNow is bool)
+        && (!('historicalWaitMinutes' in data) || (data.historicalWaitMinutes is number && data.historicalWaitMinutes >= 0 && data.historicalWaitMinutes <= 300))
+        && (!('googleRating' in data) || (data.googleRating is number && data.googleRating >= 0 && data.googleRating <= 5))
+        && (!('reviewCount' in data) || (data.reviewCount is number && data.reviewCount >= 0))
+        && (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 400))
+        && (!('sponsor_rank' in data) || (data.sponsor_rank is number && (data.sponsor_rank == 1 || data.sponsor_rank == 2)))
+        && (!('sponsor_start_date' in data) || (data.sponsor_start_date is string && data.sponsor_start_date.size() <= 40))
+        && (!('sponsor_end_date' in data) || (data.sponsor_end_date is string && data.sponsor_end_date.size() <= 40))
+        && (!('sponsor_slots' in data) || (data.sponsor_slots is map && data.sponsor_slots.size() <= 12));
+    }
+
+    function isValidHospitalPrivate(data) {
+      return data.keys().hasAll(['hospitalId', 'ownerUid', 'contactName', 'mobile', 'email', 'createdAt'])
+        && data.keys().hasOnly(['hospitalId', 'ownerUid', 'contactName', 'designation', 'mobile', 'email', 'alternatePhone', 'licenseDocName', 'createdAt'])
+        && isValidId(data.hospitalId)
+        && isValidId(data.ownerUid)
+        && data.contactName is string && data.contactName.size() >= 2 && data.contactName.size() <= 120
+        && data.mobile is string && data.mobile.size() >= 10 && data.mobile.size() <= 20
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 160
+        && data.createdAt is timestamp
+        && (!('designation' in data) || (data.designation is string && data.designation.size() <= 80))
+        && (!('alternatePhone' in data) || (data.alternatePhone is string && data.alternatePhone.size() <= 20))
+        && (!('licenseDocName' in data) || (data.licenseDocName is string && data.licenseDocName.size() <= 200));
+    }
+
+    function isValidBooking(data) {
+      return data.keys().hasAll([
+          'id', 'hospitalId', 'hospitalOwnerUid', 'hospitalName', 'specialty', 'patientUid',
+          'patientName', 'patientMobile', 'patientAge', 'patientGender',
+          'date', 'timeSlot', 'isWalkIn', 'tokenNumber', 'queuePosition',
+          'status', 'consentGiven', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'queue_id', 'hospitalId', 'hospital_id', 'hospitalOwnerUid', 'hospitalName',
+          'doctorId', 'doctor_id', 'doctorName', 'specialty', 'opd_id',
+          'patientUid', 'patient_id', 'patientPid', 'PID', 'patientName', 'patientMobile', 'patientEmail',
+          'patientAge', 'patientGender', 'reason', 'date', 'timeSlot',
+          'isWalkIn', 'tokenNumber', 'tokenNumeric', 'queuePosition', 'status',
+          'consentGiven', 'createdAt', 'created_at', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.hospitalId)
+        && isValidId(data.hospitalOwnerUid)
+        && isValidId(data.patientUid)
+        && data.hospitalName is string && data.hospitalName.size() >= 2 && data.hospitalName.size() <= 160
+        && data.specialty is string && data.specialty.size() >= 2 && data.specialty.size() <= 64
+        && data.patientName is string && data.patientName.size() >= 2 && data.patientName.size() <= 120
+        && data.patientMobile is string && data.patientMobile.size() >= 10 && data.patientMobile.size() <= 20
+        && data.patientAge is number && data.patientAge >= 0 && data.patientAge <= 120
+        && data.patientGender in ['Male', 'Female', 'Other']
+        && data.date is string && data.date.size() >= 8 && data.date.size() <= 24
+        && data.timeSlot is string && data.timeSlot.size() >= 2 && data.timeSlot.size() <= 40
+        && data.isWalkIn is bool
+        && data.tokenNumber is string && data.tokenNumber.size() >= 2 && data.tokenNumber.size() <= 24
+        && data.queuePosition is number && data.queuePosition >= 0 && data.queuePosition <= 1000
+        && data.status in ['waiting', 'called', 'completed', 'skipped', 'cancelled']
+        && data.consentGiven == true
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('queue_id' in data) || isValidId(data.queue_id))
+        && (!('hospital_id' in data) || isValidId(data.hospital_id))
+        && (!('doctorId' in data) || data.doctorId == null || isValidId(data.doctorId))
+        && (!('doctor_id' in data) || data.doctor_id == null || isValidId(data.doctor_id))
+        && (!('opd_id' in data) || (data.opd_id is string && data.opd_id.size() <= 64))
+        && (!('patient_id' in data) || data.patient_id == null || isValidId(data.patient_id))
+        && (!('patientPid' in data) || (data.patientPid is string && data.patientPid.matches('^PID-[0-9]{4}-[0-9]{4}-[0-9]{2}$')))
+        && (!('PID' in data) || data.PID == null || (data.PID is string && data.PID.matches('^PID-[0-9]{4}-[0-9]{4}-[0-9]{2}$')))
+        && (!('doctorName' in data) || (data.doctorName is string && data.doctorName.size() <= 120))
+        && (!('patientEmail' in data) || (data.patientEmail is string && data.patientEmail.size() <= 160))
+        && (!('reason' in data) || (data.reason is string && data.reason.size() <= 300))
+        && (!('tokenNumeric' in data) || (data.tokenNumeric is number && data.tokenNumeric >= 0))
+        && (!('created_at' in data) || data.created_at is number || data.created_at is timestamp);
+    }
+
+    function isValidQueueEntry(data) {
+      return data.keys().hasAll([
+          'queue_id', 'hospital_id', 'opd_id', 'patient_name',
+          'tokenNumber', 'status', 'created_at', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'queue_id', 'hospital_id', 'opd_id', 'doctor_id', 'patient_id',
+          'patient_name', 'age', 'gender', 'phone', 'PID',
+          'tokenNumber', 'tokenNumeric', 'status', 'isWalkIn', 'created_at', 'updatedAt'
+        ])
+        && isValidId(data.queue_id)
+        && isValidId(data.hospital_id)
+        && data.opd_id is string && data.opd_id.size() >= 2 && data.opd_id.size() <= 64
+        && data.patient_name is string && data.patient_name.size() >= 2 && data.patient_name.size() <= 120
+        && data.tokenNumber is string && data.tokenNumber.size() >= 2 && data.tokenNumber.size() <= 24
+        && data.status in ['waiting', 'called', 'completed', 'skipped', 'cancelled']
+        && data.created_at is timestamp
+        && data.updatedAt is timestamp
+        && (!('doctor_id' in data) || data.doctor_id == null || isValidId(data.doctor_id))
+        && (!('patient_id' in data) || data.patient_id == null || isValidId(data.patient_id))
+        && (!('age' in data) || (data.age is number && data.age >= 0 && data.age <= 120))
+        && (!('gender' in data) || data.gender in ['Male', 'Female', 'Other'])
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 20))
+        && (!('PID' in data) || data.PID == null || (data.PID is string && data.PID.matches('^PID-[0-9]{4}-[0-9]{4}-[0-9]{2}$')))
+        && (!('tokenNumeric' in data) || (data.tokenNumeric is number && data.tokenNumeric >= 0))
+        && (!('isWalkIn' in data) || data.isWalkIn is bool);
+    }
+
+    function isValidPrescription(data) {
+      return data.keys().hasAll([
+          'prescription_id', 'patient_name', 'doctor_id', 'doctor_name',
+          'hospital_id', 'medicines', 'diagnosis', 'status', 'created_at', 'updated_at'
+        ])
+        && data.keys().hasOnly([
+          'prescription_id', 'visit_id', 'booking_id', 'token_number',
+          'patient_id', 'patient_name', 'patient_age', 'patient_gender', 'PID',
+          'doctor_id', 'doctor_name', 'doctor_qualification', 'doctor_reg_number',
+          'hospital_id', 'hospital_name', 'opd_id', 'medicines',
+          'symptoms', 'diagnosis', 'notes', 'follow_up_date',
+          'status', 'dispensing_summary', 'dispensing_details',
+          'created_at', 'updated_at'
+        ])
+        && isValidId(data.prescription_id)
+        && isValidId(data.doctor_id)
+        && isValidId(data.hospital_id)
+        && data.patient_name is string && data.patient_name.size() >= 2 && data.patient_name.size() <= 120
+        && data.doctor_name is string && data.doctor_name.size() >= 2 && data.doctor_name.size() <= 120
+        && data.medicines is list && data.medicines.size() >= 1 && data.medicines.size() <= 25
+        && data.diagnosis is string && data.diagnosis.size() >= 1 && data.diagnosis.size() <= 300
+        && data.status in ['New', 'In progress', 'Completed']
+        && data.created_at is timestamp
+        && data.updated_at is timestamp
+        && (!('visit_id' in data) || isValidId(data.visit_id))
+        && (!('booking_id' in data) || isValidId(data.booking_id))
+        && (!('token_number' in data) || (data.token_number is string && data.token_number.size() <= 24))
+        && (!('patient_id' in data) || data.patient_id == null || isValidId(data.patient_id))
+        && (!('patient_age' in data) || (data.patient_age is number && data.patient_age >= 0 && data.patient_age <= 120))
+        && (!('patient_gender' in data) || data.patient_gender in ['Male', 'Female', 'Other'])
+        && (!('PID' in data) || data.PID == null || (data.PID is string && data.PID.matches('^PID-[0-9]{4}-[0-9]{4}-[0-9]{2}$')))
+        && (!('doctor_qualification' in data) || (data.doctor_qualification is string && data.doctor_qualification.size() <= 120))
+        && (!('doctor_reg_number' in data) || (data.doctor_reg_number is string && data.doctor_reg_number.size() <= 64))
+        && (!('hospital_name' in data) || (data.hospital_name is string && data.hospital_name.size() <= 160))
+        && (!('opd_id' in data) || (data.opd_id is string && data.opd_id.size() <= 64))
+        && (!('symptoms' in data) || (data.symptoms is string && data.symptoms.size() <= 500))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && (!('follow_up_date' in data) || (data.follow_up_date is string && data.follow_up_date.size() <= 24))
+        && (!('dispensing_summary' in data) || (data.dispensing_summary is string && data.dispensing_summary.size() <= 120))
+        && (!('dispensing_details' in data) || (data.dispensing_details is list && data.dispensing_details.size() <= 25));
+    }
+
+    function isValidUserPrivate(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'updatedAt'])
+        && data.keys().hasOnly([
+          'uid', 'pid', 'historyConsent', 'displayName', 'email', 'phone', 'age', 'gender',
+          'bloodGroup', 'allergies', 'allergyNotes', 'chronicConditions',
+          'emergencyContacts', 'updatedAt'
+        ])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.updatedAt is timestamp
+        && (!('pid' in data) || (data.pid is string && data.pid.matches('^PID-[0-9]{4}-[0-9]{4}-[0-9]{2}$')))
+        && (!('historyConsent' in data) || data.historyConsent is bool)
+        && (!('email' in data) || (data.email is string && data.email.size() <= 160))
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 20))
+        && (!('age' in data) || (data.age is number && data.age >= 0 && data.age <= 120))
+        && (!('gender' in data) || data.gender in ['Male', 'Female', 'Other'])
+        && (!('bloodGroup' in data) || data.bloodGroup in ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown'])
+        && (!('allergies' in data) || (
+          data.allergies is list &&
+          data.allergies.size() <= 15 &&
+          (data.allergies.size() == 0 || (data.allergies[0] is string && data.allergies[0].size() <= 60))
+        ))
+        && (!('allergyNotes' in data) || (data.allergyNotes is string && data.allergyNotes.size() <= 300))
+        && (!('chronicConditions' in data) || (data.chronicConditions is string && data.chronicConditions.size() <= 300))
+        && (!('emergencyContacts' in data) || (
+          data.emergencyContacts is list &&
+          data.emergencyContacts.size() <= 3 &&
+          (data.emergencyContacts.size() == 0 || (
+            data.emergencyContacts[0] is map &&
+            data.emergencyContacts[0].keys().hasAll(['name', 'relation', 'phone']) &&
+            data.emergencyContacts[0].keys().hasOnly(['name', 'relation', 'phone']) &&
+            data.emergencyContacts[0].name is string && data.emergencyContacts[0].name.size() >= 2 && data.emergencyContacts[0].name.size() <= 80 &&
+            data.emergencyContacts[0].relation is string && data.emergencyContacts[0].relation.size() >= 2 && data.emergencyContacts[0].relation.size() <= 40 &&
+            data.emergencyContacts[0].phone is string && data.emergencyContacts[0].phone.size() >= 10 && data.emergencyContacts[0].phone.size() <= 20
+          ))
+        ));
+    }
+
+    function isValidSponsoredSlot(data) {
+      return data.keys().hasAll(['slotKey', 'city', 'specialty', 'rank', 'status', 'ownerUid', 'updatedAt'])
+        && data.keys().hasOnly([
+          'slotKey', 'city', 'specialty', 'rank', 'status',
+          'occupiedUntilMs', 'occupiedUntilIso', 'hospitalId', 'ownerUid', 'updatedAt'
+        ])
+        && isValidId(data.slotKey)
+        && isValidId(data.ownerUid)
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && data.specialty is string && data.specialty.size() >= 2 && data.specialty.size() <= 64
+        && data.rank is number && (data.rank == 1 || data.rank == 2)
+        && data.status in ['available', 'occupied']
+        && data.updatedAt is timestamp
+        && (!('occupiedUntilMs' in data) || (data.occupiedUntilMs is number && data.occupiedUntilMs >= 0))
+        && (!('occupiedUntilIso' in data) || (data.occupiedUntilIso is string && data.occupiedUntilIso.size() <= 40))
+        && (!('hospitalId' in data) || isValidId(data.hospitalId));
+    }
+
+    function isValidWaitlistEntry(data) {
+      return data.keys().hasAll([
+          'id', 'hospitalId', 'ownerUid', 'city', 'specialty',
+          'desiredRank', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'hospitalId', 'ownerUid', 'city', 'specialty',
+          'desiredRank', 'status', 'notifiedAt', 'claimExpiresAt',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.hospitalId)
+        && isValidId(data.ownerUid)
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && data.specialty is string && data.specialty.size() >= 2 && data.specialty.size() <= 64
+        && data.desiredRank is number && (data.desiredRank == 1 || data.desiredRank == 2)
+        && data.status in ['waiting', 'notified', 'claimed', 'expired']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('notifiedAt' in data) || (data.notifiedAt is number && data.notifiedAt >= 0))
+        && (!('claimExpiresAt' in data) || (data.claimExpiresAt is number && data.claimExpiresAt >= 0));
+    }
+
+    function isValidPaymentRecord(data) {
+      return data.keys().hasAll([
+          'orderId', 'paymentId', 'hospitalId', 'ownerUid',
+          'city', 'specialty', 'rank', 'amount', 'currency',
+          'mode', 'status', 'timestamp', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'orderId', 'paymentId', 'hospitalId', 'hospitalName', 'ownerUid',
+          'city', 'specialty', 'rank', 'amount', 'currency', 'mode',
+          'status', 'failureReason', 'startIso', 'endIso', 'timestamp', 'createdAt'
+        ])
+        && isValidId(data.orderId)
+        && isValidId(data.hospitalId)
+        && isValidId(data.ownerUid)
+        && data.paymentId is string && data.paymentId.size() <= 128
+        && data.city is string && data.city.size() >= 2 && data.city.size() <= 80
+        && data.specialty is string && data.specialty.size() >= 2 && data.specialty.size() <= 64
+        && data.rank is number && (data.rank == 1 || data.rank == 2)
+        && data.amount is number && data.amount >= 0 && data.amount <= 500000
+        && data.currency == 'INR'
+        && data.mode in ['razorpay', 'mock']
+        && data.status in ['paid', 'failed', 'conflict_not_charged']
+        && data.timestamp is number && data.timestamp >= 0
+        && data.createdAt is timestamp
+        && (!('hospitalName' in data) || (data.hospitalName is string && data.hospitalName.size() <= 160))
+        && (!('failureReason' in data) || (data.failureReason is string && data.failureReason.size() <= 200))
+        && (!('startIso' in data) || (data.startIso is string && data.startIso.size() <= 40))
+        && (!('endIso' in data) || (data.endIso is string && data.endIso.size() <= 40));
+    }
+
+    function isValidHospitalStaff(data) {
+      return data.keys().hasAll([
+          'id', 'role', 'hospitalId', 'hospitalOwnerUid', 'name', 'email', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'role', 'hospitalId', 'hospitalOwnerUid', 'hospitalName',
+          'staffUid', 'name', 'email', 'specialty', 'qualification',
+          'registrationNumber', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && data.role in ['doctor', 'medical']
+        && isValidId(data.hospitalId)
+        && isValidId(data.hospitalOwnerUid)
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 120
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 160
+        && data.createdAt is timestamp
+        && (!('hospitalName' in data) || (data.hospitalName is string && data.hospitalName.size() <= 160))
+        && (!('staffUid' in data) || isValidId(data.staffUid))
+        && (!('specialty' in data) || (data.specialty is string && data.specialty.size() <= 64))
+        && (!('qualification' in data) || (data.qualification is string && data.qualification.size() <= 120))
+        && (!('registrationNumber' in data) || (data.registrationNumber is string && data.registrationNumber.size() <= 64));
+    }
+
+    function isValidHealthVisit(data) {
+      return data.keys().hasAll([
+          'id', 'patientName', 'hospitalId', 'doctorId', 'doctorName',
+          'visitDate', 'diagnosis', 'consultationStatus', 'medicalStatus',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'bookingId', 'tokenNumber', 'patientUid', 'patientPid',
+          'patientName', 'patientAge', 'patientGender', 'hospitalId', 'hospitalName',
+          'hospitalAddress', 'city', 'doctorId', 'doctorUid', 'doctorName',
+          'doctorQualification', 'doctorRegNumber', 'doctorSpecialty',
+          'visitDate', 'visitTime', 'symptoms', 'diagnosis', 'notes',
+          'followUpDate', 'medicines', 'consultationStatus', 'medicalStatus',
+          'dispensingSummary', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.hospitalId)
+        && isValidId(data.doctorId)
+        && data.patientName is string && data.patientName.size() >= 2 && data.patientName.size() <= 120
+        && data.doctorName is string && data.doctorName.size() >= 2 && data.doctorName.size() <= 120
+        && data.visitDate is string && data.visitDate.size() >= 8 && data.visitDate.size() <= 24
+        && data.diagnosis is string && data.diagnosis.size() >= 1 && data.diagnosis.size() <= 300
+        && data.consultationStatus in ['in_progress', 'finished']
+        && data.medicalStatus in ['New', 'In progress', 'Completed']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('bookingId' in data) || isValidId(data.bookingId))
+        && (!('tokenNumber' in data) || (data.tokenNumber is string && data.tokenNumber.size() <= 24))
+        && (!('patientUid' in data) || isValidId(data.patientUid))
+        && (!('patientPid' in data) || (data.patientPid is string && data.patientPid.size() <= 24))
+        && (!('patientAge' in data) || (data.patientAge is number && data.patientAge >= 0 && data.patientAge <= 120))
+        && (!('patientGender' in data) || data.patientGender in ['Male', 'Female', 'Other'])
+        && (!('hospitalName' in data) || (data.hospitalName is string && data.hospitalName.size() <= 160))
+        && (!('hospitalAddress' in data) || (data.hospitalAddress is string && data.hospitalAddress.size() <= 300))
+        && (!('city' in data) || (data.city is string && data.city.size() <= 80))
+        && (!('doctorUid' in data) || isValidId(data.doctorUid))
+        && (!('doctorQualification' in data) || (data.doctorQualification is string && data.doctorQualification.size() <= 120))
+        && (!('doctorRegNumber' in data) || (data.doctorRegNumber is string && data.doctorRegNumber.size() <= 64))
+        && (!('doctorSpecialty' in data) || (data.doctorSpecialty is string && data.doctorSpecialty.size() <= 64))
+        && (!('visitTime' in data) || (data.visitTime is string && data.visitTime.size() <= 24))
+        && (!('symptoms' in data) || (data.symptoms is string && data.symptoms.size() <= 500))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 500))
+        && (!('followUpDate' in data) || (data.followUpDate is string && data.followUpDate.size() <= 24))
+        && (!('dispensingSummary' in data) || (data.dispensingSummary is string && data.dispensingSummary.size() <= 120))
+        && (!('medicines' in data) || (data.medicines is list && data.medicines.size() <= 25));
+    }
+
+    function isValidMedicalPrescription(data) {
+      return data.keys().hasAll([
+          'id', 'visitId', 'hospitalId', 'patientName', 'doctorName',
+          'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'visitId', 'hospitalId', 'patientUid', 'patientPid',
+          'patientName', 'doctorId', 'doctorName', 'status', 'medicines',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.visitId)
+        && isValidId(data.hospitalId)
+        && data.patientName is string && data.patientName.size() >= 2 && data.patientName.size() <= 120
+        && data.doctorName is string && data.doctorName.size() >= 2 && data.doctorName.size() <= 120
+        && data.status in ['New', 'In progress', 'Completed']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && (!('patientUid' in data) || isValidId(data.patientUid))
+        && (!('patientPid' in data) || (data.patientPid is string && data.patientPid.size() <= 24))
+        && (!('doctorId' in data) || isValidId(data.doctorId))
+        && (!('medicines' in data) || (data.medicines is list && data.medicines.size() <= 25));
+    }
+
+    function isValidDispensingRecord(data) {
+      return data.keys().hasAll([
+          'id', 'prescriptionId', 'hospitalId', 'patientName', 'medicineName',
+          'status', 'staffId', 'staffName', 'date', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'prescriptionId', 'visitId', 'hospitalId', 'patientName', 'patientPid',
+          'medicineName', 'strength', 'quantityDispensed', 'status', 'note',
+          'staffId', 'staffName', 'date', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.prescriptionId)
+        && isValidId(data.hospitalId)
+        && isValidId(data.staffId)
+        && data.patientName is string && data.patientName.size() >= 2 && data.patientName.size() <= 120
+        && data.medicineName is string && data.medicineName.size() >= 1 && data.medicineName.size() <= 160
+        && data.status in ['Dispensed', 'Out of stock', 'Substituted']
+        && data.staffName is string && data.staffName.size() >= 2 && data.staffName.size() <= 120
+        && data.date is string && data.date.size() >= 8 && data.date.size() <= 24
+        && data.createdAt is timestamp
+        && (!('visitId' in data) || isValidId(data.visitId))
+        && (!('patientPid' in data) || (data.patientPid is string && data.patientPid.size() <= 24))
+        && (!('strength' in data) || (data.strength is string && data.strength.size() <= 64))
+        && (!('quantityDispensed' in data) || (data.quantityDispensed is string && data.quantityDispensed.size() <= 64))
+        && (!('note' in data) || (data.note is string && data.note.size() <= 200));
+    }
+
+    function isValidRecordAuditLog(data) {
+      return data.keys().hasAll([
+          'id', 'patientUid', 'patientPid', 'viewerId', 'viewerName',
+          'viewerRole', 'hospitalId', 'hospitalName', 'action', 'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'patientUid', 'patientPid', 'viewerId', 'viewerUid', 'viewerName',
+          'viewerRole', 'hospitalId', 'hospitalName', 'bookingId', 'action', 'createdAt'
+        ])
+        && isValidId(data.id)
+        && isValidId(data.patientUid)
+        && isValidId(data.viewerId)
+        && isValidId(data.hospitalId)
+        && data.patientPid is string && data.patientPid.size() <= 24
+        && data.viewerName is string && data.viewerName.size() >= 2 && data.viewerName.size() <= 120
+        && data.viewerRole in ['doctor', 'medical', 'patient']
+        && data.hospitalName is string && data.hospitalName.size() >= 2 && data.hospitalName.size() <= 160
+        && data.action is string && data.action.size() >= 3 && data.action.size() <= 200
+        && data.createdAt is timestamp
+        && (!('viewerUid' in data) || isValidId(data.viewerUid))
+        && (!('bookingId' in data) || isValidId(data.bookingId));
+    }
+
+    // --- Collection Rules ---
+    match /hospitals/{hospitalId} {
+      allow get: if isValidId(hospitalId) && (
+        existing().status == 'approved' ||
+        (isSignedIn() && existing().ownerUid == request.auth.uid) ||
+        isOwner() ||
+        isAdmin()
+      );
+      allow list: if existing().status == 'approved' ||
+        (isSignedIn() && existing().ownerUid == request.auth.uid) ||
+        isVerifiedOwnerEmail() ||
+        isVerifiedAdminEmail();
+
+      allow create: if isVerifiedUser()
+        && isValidId(hospitalId)
+        && isValidHospital(incoming())
+        && incoming().id == hospitalId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().status == 'pending'
+        && incoming().is_sponsored == false
+        && !('sponsor_slots' in incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(hospitalId)
+        && isValidHospital(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          // Action: Hospital desk live queue & OPD settings update (verified owner or hospital ownerUid)
+          (
+            (isOwner() || existing().ownerUid == request.auth.uid) &&
+            incoming().status == existing().status &&
+            incoming().is_sponsored == existing().is_sponsored &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'patientsWaiting', 'currentTokenNumber', 'isPaused', 'pausedOpds', 'activeCounters', 'avgConsultMinutes',
+              'openNow', 'opdTimings', 'opdDays', 'consultationFee', 'updatedAt'
+            ])
+          ) ||
+          // Action: Hospital self-serve sponsorship activation (no manual approval; owner + approved facility only)
+          (
+            (isOwner() || existing().ownerUid == request.auth.uid) &&
+            existing().status == 'approved' &&
+            incoming().status == existing().status &&
+            incoming().is_sponsored == true &&
+            'sponsor_rank' in incoming() &&
+            incoming().sponsor_rank in [1, 2] &&
+            'sponsor_start_date' in incoming() &&
+            'sponsor_end_date' in incoming() &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'is_sponsored', 'sponsor_rank', 'sponsor_start_date', 'sponsor_end_date', 'sponsor_slots', 'updatedAt'
+            ])
+          ) ||
+          // Action: Owner clearing expired sponsorship
+          (
+            (isOwner() || existing().ownerUid == request.auth.uid) &&
+            incoming().status == existing().status &&
+            incoming().is_sponsored == false &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'is_sponsored', 'sponsor_rank', 'sponsor_start_date', 'sponsor_end_date', 'sponsor_slots', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(hospitalId) && isAdmin();
+
+      match /private/{docId} {
+        allow get: if isValidId(hospitalId) && isValidId(docId) && (
+          isAdmin() ||
+          (isSignedIn() && existing().ownerUid == request.auth.uid)
+        );
+        allow list: if false;
+        allow create: if isVerifiedUser()
+          && isValidId(hospitalId)
+          && isValidId(docId)
+          && isValidHospitalPrivate(incoming())
+          && incoming().hospitalId == hospitalId
+          && incoming().ownerUid == request.auth.uid
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/hospitals/$(hospitalId));
+        allow update, delete: if isValidId(hospitalId) && isValidId(docId) && isAdmin();
+      }
+    }
+
+    // Public non-PII live slot availability (Rank 1 & Rank 2 per city+OPD, no hospital names)
+    match /sponsored_slots/{slotKey} {
+      allow get: if isValidId(slotKey);
+      allow list: if resource.data.rank in [1, 2];
+
+      allow create: if isVerifiedUser()
+        && isValidId(slotKey)
+        && isValidSponsoredSlot(incoming())
+        && incoming().slotKey == slotKey
+        && incoming().updatedAt == request.time
+        && (isAdmin() || incoming().ownerUid == request.auth.uid);
+
+      allow update: if isVerifiedUser()
+        && isValidId(slotKey)
+        && isValidSponsoredSlot(incoming())
+        && incoming().slotKey == existing().slotKey
+        && incoming().city == existing().city
+        && incoming().specialty == existing().specialty
+        && incoming().rank == existing().rank
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (existing().status == 'available' && incoming().ownerUid == request.auth.uid) ||
+          (existing().ownerUid == request.auth.uid && incoming().ownerUid == request.auth.uid) ||
+          (
+            existing().status == 'occupied' &&
+            'occupiedUntilMs' in existing() &&
+            existing().occupiedUntilMs <= request.time.toMillis() &&
+            (incoming().status == 'available' || incoming().ownerUid == request.auth.uid)
+          )
+        );
+
+      allow delete: if isValidId(slotKey) && isAdmin();
+    }
+
+    // Waitlist entries for occupied Rank 1 / Rank 2 slots
+    match /sponsor_waitlist/{waitlistId} {
+      allow get: if isValidId(waitlistId) && isSignedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(waitlistId)
+        && isValidWaitlistEntry(incoming())
+        && incoming().id == waitlistId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().status == 'waiting'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(waitlistId)
+        && isValidWaitlistEntry(incoming())
+        && incoming().id == existing().id
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().ownerUid == request.auth.uid &&
+            existing().status in ['waiting', 'notified'] &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(waitlistId) && isAdmin();
+    }
+
+    // Sponsorship Payment Audit Records (owner or admin only; immutable after creation)
+    match /payments/{orderId} {
+      allow get: if isValidId(orderId) && isSignedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().ownerUid == request.auth.uid ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(orderId)
+        && isValidPaymentRecord(incoming())
+        && incoming().orderId == orderId
+        && incoming().ownerUid == request.auth.uid
+        && incoming().createdAt == request.time;
+
+      allow update, delete: if isValidId(orderId) && isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow get: if isValidId(bookingId) && isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        existing().hospitalOwnerUid == request.auth.uid ||
+        isOwner() ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        existing().hospitalOwnerUid == request.auth.uid ||
+        isVerifiedOwnerEmail() ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(bookingId)
+        && isValidBooking(incoming())
+        && incoming().id == bookingId
+        && (incoming().patientUid == request.auth.uid || isOwner() || isAdmin())
+        && incoming().status == 'waiting'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/hospitals/$(incoming().hospitalId))
+        && get(/databases/$(database)/documents/hospitals/$(incoming().hospitalId)).data.ownerUid == incoming().hospitalOwnerUid;
+
+      allow update: if isVerifiedUser()
+        && isValidId(bookingId)
+        && isValidBooking(incoming())
+        && incoming().id == existing().id
+        && incoming().hospitalId == existing().hospitalId
+        && incoming().hospitalOwnerUid == existing().hospitalOwnerUid
+        && incoming().patientUid == existing().patientUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            existing().status in ['waiting', 'called', 'skipped'] &&
+            (
+              // Action: Patient cancel or reschedule
+              (
+                existing().patientUid == request.auth.uid &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['status', 'date', 'timeSlot', 'updatedAt']) &&
+                incoming().status in ['waiting', 'cancelled']
+              ) ||
+              // Action: Hospital Desk queue management (verified Owner or hospitalOwnerUid)
+              (
+                (isOwner() || existing().hospitalOwnerUid == request.auth.uid) &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['status', 'queuePosition', 'updatedAt'])
+              )
+            )
+          )
+        );
+
+      allow delete: if isValidId(bookingId) && isAdmin();
+    }
+
+    // OPD-scoped live queue entries controlled exclusively by Hospital Desk (Owner) or Admin
+    match /queue_entries/{queueId} {
+      allow get: if isValidId(queueId) && isSignedIn() && (
+        existing().patient_id == request.auth.uid ||
+        isStaffRoleForHospital('doctor', existing().hospital_id) ||
+        isOwner() ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().patient_id == request.auth.uid ||
+        isStaffRoleForHospital('doctor', existing().hospital_id) ||
+        isVerifiedOwnerEmail() ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(queueId)
+        && isValidQueueEntry(incoming())
+        && incoming().queue_id == queueId
+        && incoming().status == 'waiting'
+        && incoming().created_at == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          isOwner() ||
+          incoming().patient_id == request.auth.uid
+        );
+
+      allow update: if isVerifiedUser()
+        && isValidId(queueId)
+        && isValidQueueEntry(incoming())
+        && incoming().queue_id == existing().queue_id
+        && incoming().hospital_id == existing().hospital_id
+        && incoming().created_at == existing().created_at
+        && incoming().updatedAt == request.time
+        && (isAdmin() || isOwner());
+
+      allow delete: if isValidId(queueId) && isAdmin();
+    }
+
+    // Shared prescriptions collection (Doctor writes -> Medical of same hospital reads & updates status)
+    match /prescriptions/{prescriptionId} {
+      allow get: if isValidId(prescriptionId) && isSignedIn() && (
+        existing().patient_id == request.auth.uid ||
+        isStaffRoleForHospital('doctor', existing().hospital_id) ||
+        isStaffRoleForHospital('medical', existing().hospital_id) ||
+        isOwner() ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().patient_id == request.auth.uid ||
+        isStaffRoleForHospital('doctor', existing().hospital_id) ||
+        isStaffRoleForHospital('medical', existing().hospital_id) ||
+        isVerifiedOwnerEmail() ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(prescriptionId)
+        && isValidPrescription(incoming())
+        && incoming().prescription_id == prescriptionId
+        && incoming().status == 'New'
+        && incoming().created_at == request.time
+        && incoming().updated_at == request.time
+        && (isAdmin() || isStaffRoleForHospital('doctor', incoming().hospital_id));
+
+      allow update: if isVerifiedUser()
+        && isValidId(prescriptionId)
+        && isValidPrescription(incoming())
+        && incoming().prescription_id == existing().prescription_id
+        && incoming().hospital_id == existing().hospital_id
+        && incoming().created_at == existing().created_at
+        && incoming().updated_at == request.time
+        && (
+          isAdmin() ||
+          (
+            isStaffRoleForHospital('medical', existing().hospital_id) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'status', 'dispensing_summary', 'dispensing_details', 'updated_at'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(prescriptionId) && isAdmin();
+    }
+
+    match /users/{userId}/private/{docId} {
+      allow get: if isValidId(userId) && isValidId(docId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if false;
+      allow create, update: if isSignedIn()
+        && isValidId(userId)
+        && isValidId(docId)
+        && request.auth.uid == userId
+        && isValidUserPrivate(incoming(), userId)
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(userId) && isValidId(docId) && isAdmin();
+    }
+
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // --- Digital Health Records Collections ---
+
+    // Hospital-provisioned Doctor & Medical accounts (NO self-registration)
+    match /hospital_staff/{staffId} {
+      allow get: if isValidId(staffId) && isSignedIn() && (
+        existing().staffUid == request.auth.uid ||
+        existing().hospitalOwnerUid == request.auth.uid ||
+        isOwner() ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().staffUid == request.auth.uid ||
+        existing().hospitalOwnerUid == request.auth.uid ||
+        isVerifiedOwnerEmail() ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(staffId)
+        && isValidHospitalStaff(incoming())
+        && incoming().id == staffId
+        && incoming().createdAt == request.time
+        && exists(/databases/$(database)/documents/hospitals/$(incoming().hospitalId))
+        && (
+          isAdmin() ||
+          isOwner() ||
+          get(/databases/$(database)/documents/hospitals/$(incoming().hospitalId)).data.ownerUid == request.auth.uid
+        );
+
+      allow update, delete: if isValidId(staffId) && isSignedIn() && (
+        isAdmin() ||
+        isOwner() ||
+        existing().hospitalOwnerUid == request.auth.uid
+      );
+    }
+
+    // Patient consultations & prescriptions
+    match /health_visits/{visitId} {
+      allow get: if isValidId(visitId) && isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        existing().doctorUid == request.auth.uid ||
+        isAdmin() ||
+        (isVerifiedDoctorStaff() && 'patientUid' in existing() && patientHasConsent(existing().patientUid))
+      );
+      allow list: if isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        existing().doctorUid == request.auth.uid ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(visitId)
+        && isValidHealthVisit(incoming())
+        && incoming().id == visitId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isAdmin() || isStaffRoleForHospital('doctor', incoming().hospitalId));
+
+      allow update: if isVerifiedUser()
+        && isValidId(visitId)
+        && isValidHealthVisit(incoming())
+        && incoming().id == existing().id
+        && incoming().hospitalId == existing().hospitalId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isStaffRoleForHospital('doctor', existing().hospitalId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'symptoms', 'diagnosis', 'notes', 'followUpDate',
+              'medicines', 'consultationStatus', 'medicalStatus', 'updatedAt'
+            ])
+          ) ||
+          (
+            isStaffRoleForHospital('medical', existing().hospitalId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'medicalStatus', 'dispensingSummary', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isValidId(visitId) && isAdmin();
+    }
+
+    // Incoming hospital pharmacy prescriptions (scoped to linked hospital)
+    match /medical_prescriptions/{prescriptionId} {
+      allow get: if isValidId(prescriptionId) && isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        isStaffRoleForHospital('medical', existing().hospitalId) ||
+        isStaffRoleForHospital('doctor', existing().hospitalId) ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        isStaffRoleForHospital('medical', existing().hospitalId) ||
+        isStaffRoleForHospital('doctor', existing().hospitalId) ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(prescriptionId)
+        && isValidMedicalPrescription(incoming())
+        && incoming().id == prescriptionId
+        && incoming().status == 'New'
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isAdmin() || isStaffRoleForHospital('doctor', incoming().hospitalId));
+
+      allow update: if isVerifiedUser()
+        && isValidId(prescriptionId)
+        && isValidMedicalPrescription(incoming())
+        && incoming().id == existing().id
+        && incoming().visitId == existing().visitId
+        && incoming().hospitalId == existing().hospitalId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (
+            isStaffRoleForHospital('medical', existing().hospitalId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isValidId(prescriptionId) && isAdmin();
+    }
+
+    // Hospital pharmacy dispensing history (immutable once recorded)
+    match /dispensing_records/{recordId} {
+      allow get: if isValidId(recordId) && isSignedIn() && (
+        isStaffRoleForHospital('medical', existing().hospitalId) ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        isStaffRoleForHospital('medical', existing().hospitalId) ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(recordId)
+        && isValidDispensingRecord(incoming())
+        && incoming().id == recordId
+        && incoming().createdAt == request.time
+        && (isAdmin() || isStaffRoleForHospital('medical', incoming().hospitalId));
+
+      allow update, delete: if isValidId(recordId) && isAdmin();
+    }
+
+    // Append-only audit logs readable only by the patient (or admin)
+    match /record_audit_logs/{logId} {
+      allow get: if isValidId(logId) && isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        isAdmin()
+      );
+      allow list: if isSignedIn() && (
+        existing().patientUid == request.auth.uid ||
+        isVerifiedAdminEmail()
+      );
+
+      allow create: if isVerifiedUser()
+        && isValidId(logId)
+        && isValidRecordAuditLog(incoming())
+        && incoming().id == logId
+        && incoming().createdAt == request.time
+        && (isAdmin() || isStaffRoleForHospital('doctor', incoming().hospitalId));
+
+      allow update, delete: if isValidId(logId) && isAdmin();
+    }
+  }
+}

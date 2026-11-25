@@ -1,0 +1,6 @@
+{
+  "name": "Pinnacle",
+  "description": "Mobile-first doctor and OPD appointment booking in India with live queue tracking and least total time ranking, launching in Nagpur.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
